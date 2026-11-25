@@ -1,0 +1,46 @@
+name: CI
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  # Variant A: skip inside the reusable workflow.
+  a-python:
+    uses: ./.github/workflows/inner.yml
+    with:
+      skip-paths: "*.md"
+  a-gate:
+    needs: [a-python]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'A needs=${{ toJSON(needs) }}'
+  # Variant B: classify in the caller, skip the caller job.
+  b-classify:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.c.outputs.code }}
+    steps:
+      - id: c
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          code=false
+          for f in $(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate -q '.[].filename'); do
+            case "$f" in *.md) ;; *) code=true ;; esac
+          done
+          echo "code=$code" >> "$GITHUB_OUTPUT"; echo "code=$code"
+  b-python:
+    needs: b-classify
+    if: needs.b-classify.outputs.code == 'true'
+    uses: ./.github/workflows/inner.yml
+    with:
+      classify: false
+  b-gate:
+    needs: [b-classify, b-python]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'B needs=${{ toJSON(needs) }}'

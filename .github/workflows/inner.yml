@@ -1,0 +1,42 @@
+name: inner
+on:
+  workflow_call:
+    inputs:
+      skip-paths:
+        type: string
+        default: ""
+      classify:
+        type: boolean
+        default: true
+jobs:
+  classify:
+    if: inputs.classify
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.c.outputs.code }}
+    steps:
+      - id: c
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SKIP: ${{ inputs.skip-paths }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          code=false
+          for f in $(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate -q '.[].filename'); do
+            case "$f" in *.md) ;; *) code=true ;; esac
+          done
+          echo "code=$code" >> "$GITHUB_OUTPUT"; echo "code=$code"
+  lint:
+    needs: classify
+    if: always() && (!inputs.classify || needs.classify.outputs.code == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo lint
+  test:
+    needs: classify
+    if: always() && (!inputs.classify || needs.classify.outputs.code == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo test
